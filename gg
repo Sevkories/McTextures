@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MC Texture Studio 3D - VIP Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        :root {
+            --primary-bg: #0f172a;
+            --accent-color: #3b82f6;
+            --vip-gold: #fbbf24;
+        }
+
+        body {
+            background: linear-gradient(135deg, var(--primary-bg), #1e293b, #334155);
+            background-attachment: fixed;
+            color: #f1f5f9;
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            user-select: none;
+            overflow: hidden;
+            height: 100vh;
+            margin: 0;
+            transition: all 0.5s ease;
+        }
+
+        body.vip-mode {
+            background: linear-gradient(135deg, #1a1a1a, #451a03, #78350f);
+            --accent-color: #fbbf24;
+        }
+        
+        .aero {
+            background: rgba(255, 255, 255, 0.08) !important;
+            backdrop-filter: blur(20px) saturate(200%);
+            -webkit-backdrop-filter: blur(20px) saturate(200%);
+            border: 1px solid rgba(255, 255, 255, 0.15) !important;
+            box-shadow: 0 10px 30px 0 rgba(0, 0, 0, 0.5);
+        }
+
+        .vip-mode .aero {
+            background: rgba(251, 191, 36, 0.05) !important;
+            border-color: rgba(251, 191, 36, 0.3) !important;
+            box-shadow: 0 10px 40px 0 rgba(251, 191, 36, 0.2);
+        }
+
+        .main-container { height: 100vh; display: flex; flex-direction: column; }
+        
+        .workspace { 
+            flex: 1; 
+            display: flex; 
+            padding: 10px; 
+            gap: 20px; 
+            align-items: center; 
+            justify-content: center;
+        }
+        
+        .pixel-grid {
+            display: grid;
+            grid-template-columns: repeat(16, 1fr);
+            background-color: #ffffff;
+            border: 4px solid #1e293b;
+            width: 420px; 
+            height: 420px;
+            image-rendering: pixelated;
+            box-shadow: 0 0 60px rgba(0,0,0,0.7);
+        }
+        .vip-mode .pixel-grid { border-color: #fbbf24; }
+
+        .pixel { 
+            width: 100%;
+            height: 100%;
+            border: 1px solid rgba(0,0,0,0.06); 
+            cursor: crosshair; 
+        }
+        .pixel:hover { outline: 3px solid var(--accent-color); z-index: 10; }
+
+        .side-panel {
+            width: 280px;
+            border-radius: 16px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            height: 92vh;
+            overflow-y: auto;
+        }
+
+        .tool-btn {
+            @apply flex items-center justify-center gap-2 p-2.5 rounded-xl bg-slate-800/60 hover:bg-white/10 transition text-[11px] font-bold border border-white/5 text-slate-300 shadow-lg;
+        }
+        .tool-btn.active { 
+            background-color: var(--accent-color);
+            @apply border-white text-white ring-4;
+            --tw-ring-color: rgba(59, 130, 246, 0.3);
+        }
+        .vip-mode .tool-btn.active { --tw-ring-color: rgba(251, 191, 36, 0.3); }
+        
+        .template-card {
+            @apply p-2 rounded-xl bg-slate-900/80 border border-white/10 hover:border-blue-400 transition-all cursor-pointer flex flex-col items-center gap-2 shadow-md relative overflow-hidden;
+        }
+        .vip-mode .template-card { @apply bg-orange-950/40 border-yellow-500/20 hover:border-yellow-400; }
+        
+        .template-preview {
+            width: 100%; aspect-ratio: 1; image-rendering: pixelated; background: #fff; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        #three-container {
+            width: 100%;
+            height: 200px;
+            background: radial-gradient(circle, #1e293b 0%, #000 100%);
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.1);
+            cursor: grab;
+        }
+
+        .color-dot { width: 100%; aspect-ratio: 1; border-radius: 6px; cursor: pointer; border: 1px solid rgba(0,0,0,0.4); transition: all 0.2s; }
+        .color-dot:hover { transform: scale(1.2) rotate(5deg); box-shadow: 0 0 10px rgba(255,255,255,0.3); }
+        input[type="color"] { width: 100%; height: 45px; background: transparent; border: none; cursor: pointer; padding: 0; }
+
+        /* Modal Styles */
+        #vip-modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.8);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(8px);
+        }
+
+        .vip-badge {
+            background: linear-gradient(45deg, #fbbf24, #f59e0b);
+            @apply text-black font-black px-3 py-1 rounded-full text-[10px] shadow-lg animate-pulse;
+        }
+    </style>
+</head>
+<body id="app-body">
+    <!-- VIP Login Modal -->
+    <div id="vip-modal">
+        <div class="aero p-8 rounded-3xl w-80 flex flex-col items-center gap-4 text-center border-2 border-yellow-500/50">
+            <span class="text-4xl">??</span>
+            <h2 class="text-xl font-black text-yellow-400">VIP EDITION LOGIN</h2>
+            <p class="text-xs text-white/60">Özel VIP özelliklerini açmak için şifreyi giriniz.</p>
+            <input type="password" id="vip-pass" placeholder="Şifre" class="bg-black/40 border border-white/20 rounded-xl px-4 py-2 text-white text-center focus:border-yellow-500 outline-none w-full">
+            <div class="flex gap-2 w-full">
+                <button onclick="closeVIP()" class="flex-1 py-2 text-xs font-bold text-white/50">İPTAL</button>
+                <button onclick="verifyVIP()" class="flex-1 py-2 bg-yellow-600 hover:bg-yellow-500 rounded-xl text-xs font-black text-white">ONAYLA</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <header class="aero p-3 flex justify-between items-center px-8 border-b border-white/5">
+            <div class="flex items-center gap-3">
+                <span id="header-icon" class="text-3xl drop-shadow-2xl">??</span>
+                <div>
+                    <h1 id="app-title" class="text-xl font-black text-white tracking-tighter leading-none uppercase">MC Texture Ultimate</h1>
+                    <span id="app-subtitle" class="text-[9px] text-blue-400 font-black tracking-[0.3em] uppercase opacity-80">Şevket Special Edition</span>
+                </div>
+            </div>
+            <div class="flex gap-3 items-center">
+                <button id="vip-trigger" onclick="openVIP()" class="bg-gradient-to-r from-yellow-500 to-amber-600 text-black px-4 py-2 rounded-xl text-[10px] font-black shadow-xl hover:scale-105 transition-all">?? VIP'YE GEÇ</button>
+                <div class="h-6 w-[1px] bg-white/10 mx-2"></div>
+                <button onclick="clearGrid()" class="px-4 py-2 bg-slate-700/40 text-slate-300 hover:text-white rounded-xl text-xs font-bold border border-white/10 transition">TEMİZLE</button>
+                <button onclick="downloadTexture()" class="px-6 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-black shadow-xl shadow-blue-900/40 transition-all flex items-center gap-2">
+                    EXPORT .PNG
+                </button>
+            </div>
+        </header>
+
+        <div class="workspace">
+            <!-- Left Panel: Library -->
+            <div class="side-panel aero">
+                <h2 class="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-3 border-b border-white/5 pb-2 flex justify-between items-center" id="lib-title">
+                    BLOK KÜTÜPHANESİ
+                    <span class="bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full text-[8px]">PRO</span>
+                </h2>
+                <div class="grid grid-cols-2 gap-3" id="templates-container"></div>
+                
+                <div class="mt-auto p-4 bg-gradient-to-br from-blue-600/10 to-transparent rounded-2xl border border-blue-500/10" id="tip-box">
+                    <p class="text-[11px] text-blue-200/70 font-medium leading-relaxed italic">
+                        "VIPO modu ile dokularda devrim yap kral!"
+                    </p>
+                </div>
+            </div>
+
+            <!-- Middle: Grid -->
+            <div class="flex flex-col items-center gap-6">
+                <div id="grid" class="pixel-grid"></div>
+                <div id="status-bar" class="px-5 py-2 bg-slate-900/80 rounded-full aero text-[10px] text-white font-black flex items-center gap-3 border border-blue-500/20">
+                    <span class="flex h-2 w-2 relative">
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                    </span>
+                    REALTİME RENDERING
+                </div>
+            </div>
+
+            <!-- Right Panel: Editor -->
+            <div class="side-panel aero">
+                <h2 class="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-3 border-b border-white/5 pb-2" id="edit-title">EDİTÖR PANELİ</h2>
+                <div class="grid grid-cols-2 gap-2">
+                    <button id="btn-pencil" class="tool-btn active" onclick="setTool('pencil')">?? KALEM</button>
+                    <button id="btn-bucket" class="tool-btn" onclick="setTool('bucket')">?? KOVA</button>
+                    <button id="btn-picker" class="tool-btn" onclick="setTool('picker')">?? SEÇİCİ</button>
+                    <button id="btn-eraser" class="tool-btn" onclick="setTool('eraser')">?? SİLGİ</button>
+                    <!-- VIP Specific Tools -->
+                    <button id="btn-neon" class="tool-btn hidden vip-only border-yellow-500/30" onclick="setTool('neon')">?? NEON</button>
+                    <button id="btn-particle" class="tool-btn hidden vip-only border-yellow-500/30" onclick="setTool('particle')">? PARÇACIK</button>
+                </div>
+
+                <div class="p-3 bg-slate-900/50 rounded-2xl border border-white/5 mt-2">
+                    <button id="btn-texture" class="tool-btn w-full mb-3" onclick="setTool('texture')">?? DOKU EFEKTİ</button>
+                    <div id="texture-menu" class="flex flex-wrap justify-between gap-1.5 opacity-40 pointer-events-none">
+                        <button class="intensity-btn active bg-slate-800 px-2 py-1.5 text-[8px] rounded-lg text-white font-bold flex-1" onclick="setIntensity(15, this)">AZ</button>
+                        <button class="intensity-btn bg-slate-800 px-2 py-1.5 text-[8px] rounded-lg text-white font-bold flex-1" onclick="setIntensity(45, this)">ORTA</button>
+                        <button class="intensity-btn bg-slate-800 px-2 py-1.5 text-[8px] rounded-lg text-white font-bold flex-1" onclick="setIntensity(90, this)">ÇOK</button>
+                        <button class="intensity-btn bg-slate-800 px-2 py-1.5 text-[8px] rounded-lg text-yellow-400 font-black flex-1 border border-yellow-500/30" onclick="setIntensity(180, this)">DELİ!</button>
+                        <!-- VIPO Intensity -->
+                        <button id="btn-vipo" class="intensity-btn hidden vip-only bg-slate-800 px-2 py-1.5 text-[8px] rounded-lg text-red-500 font-black flex-1 border border-red-500/50" onclick="setIntensity(250, this)">VIPO!</button>
+                    </div>
+                </div>
+                
+                <div class="p-3 bg-slate-900/50 rounded-2xl border border-white/5">
+                    <input type="color" id="colorPicker" value="#4ade80">
+                    <div class="grid grid-cols-6 gap-2 mt-4" id="palette"></div>
+                </div>
+
+                <div id="three-container" class="mt-auto shadow-inner"></div>
+            </div>
+        </div>
+    </div>
+
+    <canvas id="exportCanvas" width="16" height="16" style="display:none;"></canvas>
+
+    <script>
+        const grid = document.getElementById('grid');
+        const colorInput = document.getElementById('colorPicker');
+        const palette = document.getElementById('palette');
+        const textureMenu = document.getElementById('texture-menu');
+        const exportCanvas = document.getElementById('exportCanvas');
+        const exportCtx = exportCanvas.getContext('2d');
+        const templatesContainer = document.getElementById('templates-container');
+        
+        let isDrawing = false;
+        let currentTool = 'pencil';
+        let textureIntensity = 15;
+        let isVIP = false;
+
+        // --- TEMPLATE DATA ---
+        const templates = {
+            grass: {
+                name: "Çim Blok",
+                colors: ["#3b5d22", "#4c7a2d", "#5a8c36", "#689e40", "#76b04a", "#84c254"],
+                generate: () => Array.from({length: 256}, () => templates.grass.colors[Math.floor(Math.random() * 6)])
+            },
+            stone: {
+                name: "Taş (Kaya)",
+                colors: ["#686868", "#7a7a7a", "#8c8c8c", "#5a5a5a", "#9e9e9e"],
+                generate: () => Array.from({length: 256}, () => templates.stone.colors[Math.floor(Math.random() * 5)])
+            },
+            ore: {
+                name: "ULTRA ELMAS",
+                generate: () => {
+                    let arr = Array.from({length: 256}, () => "#686868");
+                    const mainSpots = [34, 35, 50, 51, 67, 100, 116, 117, 133, 180, 181, 196, 197, 213];
+                    const glowSpots = [33, 49, 66, 99, 115, 179, 195, 212];
+                    mainSpots.forEach(s => arr[s] = "#00f2ff"); 
+                    glowSpots.forEach(s => arr[s] = "#008cff"); 
+                    return arr;
+                }
+            },
+            gold_block: {
+                name: "ALTIN VIP",
+                vip: true,
+                generate: () => Array.from({length: 256}, () => ["#fbbf24", "#f59e0b", "#d97706"][Math.floor(Math.random()*3)])
+            },
+            emerald: {
+                name: "ZÜMRÜT VIP",
+                vip: true,
+                generate: () => {
+                    let arr = Array(256).fill("#10b981");
+                    for(let i=0; i<256; i++) if(i%7===0) arr[i] = "#059669";
+                    return arr;
+                }
+            },
+            void_block: {
+                name: "VOID VIP",
+                vip: true,
+                generate: () => {
+                    let arr = Array.from({length: 256}, () => "#000000");
+                    for(let i=0; i<256; i++) if(Math.random() > 0.9) arr[i] = "#4a00e0";
+                    return arr;
+                }
+            },
+            dirt: {
+                name: "Toprak",
+                colors: ["#5d4037", "#4e342e", "#6d4c41", "#3e2723"],
+                generate: () => Array.from({length: 256}, () => templates.dirt.colors[Math.floor(Math.random() * 4)])
+            },
+            tnt: {
+                name: "Dinamit",
+                generate: () => {
+                    let arr = Array(256).fill("#b71c1c");
+                    for(let i=0; i<256; i++) {
+                        let y = Math.floor(i/16);
+                        if(y > 5 && y < 10) arr[i] = "#ffffff";
+                    }
+                    return arr;
+                }
+            }
+        };
+
+        function initTemplates() {
+            templatesContainer.innerHTML = '';
+            Object.keys(templates).forEach(key => {
+                const temp = templates[key];
+                if (temp.vip && !isVIP) return; 
+
+                const card = document.createElement('div');
+                card.className = 'template-card';
+                card.onclick = () => loadTemplate(key);
+                
+                const canvas = document.createElement('canvas');
+                canvas.width = 16; canvas.height = 16;
+                canvas.className = 'template-preview';
+                const ctx = canvas.getContext('2d');
+                const data = temp.generate();
+                data.forEach((c, i) => {
+                    ctx.fillStyle = c;
+                    ctx.fillRect(i % 16, Math.floor(i / 16), 1, 1);
+                });
+                
+                const label = document.createElement('span');
+                label.className = 'text-[9px] font-black uppercase text-center leading-tight ' + (temp.vip ? 'text-yellow-400' : 'text-slate-100');
+                label.innerText = (temp.vip ? "?? " : "") + temp.name;
+                
+                card.appendChild(canvas);
+                card.appendChild(label);
+                templatesContainer.appendChild(card);
+            });
+        }
+
+        // --- VIP LOGIC ---
+        function openVIP() { document.getElementById('vip-modal').style.display = 'flex'; }
+        function closeVIP() { document.getElementById('vip-modal').style.display = 'none'; }
+        
+        function verifyVIP() {
+            const pass = document.getElementById('vip-pass').value;
+            if (pass === "textures") {
+                activateVIP();
+                closeVIP();
+            } else {
+                alert("Hatalı Şifre Kral!");
+            }
+        }
+
+        function activateVIP() {
+            isVIP = true;
+            document.getElementById('app-body').classList.add('vip-mode');
+            document.getElementById('vip-trigger').innerHTML = "?? VIP ACTIVE";
+            document.getElementById('vip-trigger').disabled = true;
+            document.getElementById('app-title').innerHTML = "MC TEXTURE VIP EDITION";
+            document.getElementById('app-subtitle').innerHTML = "Premium Creative Workspace";
+            document.getElementById('app-subtitle').classList.replace('text-blue-400', 'text-yellow-500');
+            document.getElementById('lib-title').classList.replace('text-blue-400', 'text-yellow-500');
+            document.getElementById('lib-title').innerHTML = `VIP KÜTÜPHANESİ <span class="bg-yellow-500/20 text-yellow-500 px-2 py-0.5 rounded-full text-[8px]">ACTIVE</span>`;
+            document.getElementById('tip-box').classList.replace('from-blue-600/10', 'from-yellow-600/10');
+            document.getElementById('tip-box').querySelector('p').innerHTML = "VIP Hoşgeldin Kral! VIPO doku modu ve parıltılı fırçan aktif.";
+            document.getElementById('status-bar').classList.replace('border-blue-500/20', 'border-yellow-500/40');
+            
+            // Show VIP tools and intensities
+            document.querySelectorAll('.vip-only').forEach(el => el.classList.remove('hidden'));
+            
+            // Extra VIP Colors
+            const vipColors = ['#fde047', '#eab308', '#a16207', '#c084fc', '#9333ea', '#581c87', '#fb7185', '#be123c', '#2dd4bf', '#0d9488'];
+            vipColors.forEach(c => addPaletteColor(c));
+
+            initTemplates();
+        }
+
+        function loadTemplate(key) {
+            const data = templates[key].generate();
+            pixels.forEach((p, i) => {
+                p.style.backgroundColor = data[i];
+            });
+            updateExportCanvas();
+        }
+
+        // --- THREE.JS ---
+        let scene, camera, renderer, cube, cubeTexture;
+        let isDraggingModel = false;
+
+        function init3D() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(70, 230 / 200, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(240, 200); 
+            document.getElementById('three-container').appendChild(renderer.domElement);
+
+            updateExportCanvas();
+            cubeTexture = new THREE.CanvasTexture(exportCanvas);
+            cubeTexture.magFilter = THREE.NearestFilter;
+            cubeTexture.minFilter = THREE.NearestFilter;
+
+            const geometry = new THREE.BoxGeometry(1, 1, 1);
+            const material = new THREE.MeshBasicMaterial({ map: cubeTexture });
+            cube = new THREE.Mesh(geometry, material);
+            scene.add(cube);
+
+            camera.position.z = 1.7;
+
+            const container = document.getElementById('three-container');
+            container.addEventListener('mousedown', () => isDraggingModel = true);
+            window.addEventListener('mouseup', () => isDraggingModel = false);
+            window.addEventListener('mousemove', (e) => {
+                if (isDraggingModel && cube) {
+                    cube.rotation.y += e.movementX * 0.01;
+                    cube.rotation.x += e.movementY * 0.01;
+                }
+            });
+            animate();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+
+        function updateExportCanvas() {
+            exportCtx.fillStyle = "#ffffff"; 
+            exportCtx.fillRect(0, 0, 16, 16);
+            pixels.forEach((p, index) => {
+                const color = p.style.backgroundColor;
+                if (color && color !== 'transparent') {
+                    exportCtx.fillStyle = color;
+                    exportCtx.fillRect(index % 16, Math.floor(index / 16), 1, 1);
+                }
+            });
+            if (cubeTexture) cubeTexture.needsUpdate = true;
+        }
+
+        // --- GRID SYSTEM ---
+        const pixels = [];
+        for (let i = 0; i < 256; i++) {
+            const pixel = document.createElement('div');
+            pixel.className = 'pixel';
+            pixel.addEventListener('mousedown', (e) => {
+                if (e.button === 2) { erase(pixel); return; }
+                handleAction(pixel, i);
+                isDrawing = true;
+            });
+            pixel.addEventListener('mouseenter', () => { if (isDrawing) handleAction(pixel, i); });
+            grid.appendChild(pixel);
+            pixels.push(pixel);
+        }
+
+        function handleAction(el, i) {
+            let color = colorInput.value;
+            if (currentTool === 'pencil') el.style.backgroundColor = color;
+            else if (currentTool === 'neon') {
+                el.style.backgroundColor = color;
+                el.style.boxShadow = `inset 0 0 10px ${color}`;
+            }
+            else if (currentTool === 'particle') {
+                // Main pixel
+                el.style.backgroundColor = color;
+                // Random nearby particles
+                const neighbors = [i-1, i+1, i-16, i+16, i-17, i+17, i-15, i+15];
+                neighbors.forEach(idx => {
+                    if(idx >= 0 && idx < 256 && Math.random() > 0.7) {
+                        const randomColor = applyTexture(color, 40);
+                        pixels[idx].style.backgroundColor = randomColor;
+                    }
+                });
+            }
+            else if (currentTool === 'texture') {
+                el.style.backgroundColor = applyTexture(color, textureIntensity);
+            } 
+            else if (currentTool === 'eraser') el.style.backgroundColor = 'transparent';
+            else if (currentTool === 'picker') pickColor(el);
+            else if (currentTool === 'bucket') floodFill(i);
+            updateExportCanvas();
+        }
+
+        function applyTexture(color, intensity) {
+            const random = Math.floor(Math.random() * (intensity * 2)) - intensity;
+            let r, g, b;
+            if (color.startsWith('rgb')) {
+                const vals = color.match(/\d+/g);
+                r = parseInt(vals[0]); g = parseInt(vals[1]); b = parseInt(vals[2]);
+            } else {
+                r = parseInt(color.slice(1,3), 16); 
+                g = parseInt(color.slice(3,5), 16); 
+                b = parseInt(color.slice(5,7), 16);
+            }
+            return `rgb(${Math.max(0,Math.min(255,r+random))},${Math.max(0,Math.min(255,g+random))},${Math.max(0,Math.min(255,b+random))})`;
+        }
+
+        function floodFill(idx) {
+            const target = pixels[idx].style.backgroundColor || 'transparent';
+            const replacement = colorInput.value;
+            if (target === replacement) return;
+            const stack = [idx];
+            const seen = new Set();
+            while(stack.length) {
+                const i = stack.pop();
+                if (seen.has(i)) continue;
+                if ((pixels[i].style.backgroundColor || 'transparent') === target) {
+                    pixels[i].style.backgroundColor = replacement;
+                    seen.add(i);
+                    const x = i % 16, y = Math.floor(i / 16);
+                    if (x > 0) stack.push(i - 1);
+                    if (x < 15) stack.push(i + 1);
+                    if (y > 0) stack.push(i - 16);
+                    if (y < 15) stack.push(i + 16);
+                }
+            }
+        }
+
+        function erase(el) { el.style.backgroundColor = 'transparent'; updateExportCanvas(); }
+        function pickColor(el) {
+            const color = el.style.backgroundColor;
+            if (color && color !== 'transparent') {
+                if (color.startsWith('rgb')) {
+                    const rgb = color.match(/\d+/g);
+                    colorInput.value = "#" + rgb.map(x => parseInt(x).toString(16).padStart(2, '0')).join("");
+                } else {
+                    colorInput.value = color;
+                }
+                setTool('pencil');
+            }
+        }
+
+        function setTool(tool) {
+            currentTool = tool;
+            document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`btn-${tool}`).classList.add('active');
+            textureMenu.style.opacity = (tool === 'texture') ? '1' : '0.4';
+            textureMenu.style.pointerEvents = (tool === 'texture') ? 'auto' : 'none';
+        }
+
+        function setIntensity(val, btn) {
+            textureIntensity = val;
+            document.querySelectorAll('.intensity-btn').forEach(b => { 
+                b.classList.remove('bg-blue-600', 'bg-yellow-600', 'bg-red-600'); 
+                b.classList.add('bg-slate-800'); 
+            });
+            btn.classList.remove('bg-slate-800');
+            if(val === 250) btn.classList.add('bg-red-600');
+            else btn.classList.add(val > 100 ? 'bg-yellow-600' : 'bg-blue-600');
+        }
+
+        function addPaletteColor(c) {
+            const d = document.createElement('div'); 
+            d.className = 'color-dot'; 
+            d.style.backgroundColor = c;
+            d.onclick = () => { colorInput.value = c; setTool('pencil'); }; 
+            palette.appendChild(d);
+        }
+
+        const mcColors = ['#ffffff', '#7e7e7e', '#444444', '#000000', '#ff0000', '#aa0000', '#ff8400', '#ffff00', '#00ff00', '#008800', '#0000ff', '#8b4513', '#6d4c41', '#2de0ff', '#fbbf24', '#d1d1d1'];
+        mcColors.forEach(c => addPaletteColor(c));
+
+        function clearGrid() { if(confirm("Tüm dokuyu silmek istediğine emin misin?")) { pixels.forEach(p => p.style.backgroundColor = 'transparent'); updateExportCanvas(); } }
+        function downloadTexture() {
+            updateExportCanvas();
+            const link = document.createElement('a');
+            link.download = isVIP ? 'vip_mc_texture.png' : 'mc_texture.png';
+            link.href = exportCanvas.toDataURL();
+            link.click();
+        }
+
+        window.addEventListener('mouseup', () => isDrawing = false);
+        grid.addEventListener('contextmenu', e => e.preventDefault());
+        
+        window.onload = () => {
+            init3D();
+            initTemplates();
+        };
+    </script>
+</body>
+</html>
